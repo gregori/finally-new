@@ -1,13 +1,13 @@
 """Unit tests for PriceCache."""
-import asyncio
 
 import pytest
-
 from app.market.cache import PriceCache
 from app.market.models import PriceUpdate
 
 
-def make_update(ticker: str, price: float = 100.0, prev: float = 99.0) -> PriceUpdate:
+def make_update(
+    ticker: str, price: float = 100.0, prev: float = 99.0
+) -> PriceUpdate:
     return PriceUpdate.from_prices(ticker, price, prev)
 
 

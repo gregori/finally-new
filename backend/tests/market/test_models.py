@@ -1,8 +1,8 @@
 """Unit tests for PriceUpdate model."""
+
 import time
 
 import pytest
-
 from app.market.models import PriceUpdate
 
 
@@ -77,6 +77,6 @@ def test_direct_construction():
 
 
 def test_change_pct_large_move():
-    # 10% gain
+    # Test for 10% gain
     update = PriceUpdate.from_prices("TSLA", 275.0, 250.0)
     assert update.change_pct == pytest.approx(10.0)

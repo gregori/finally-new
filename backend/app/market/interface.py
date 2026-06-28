@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from .models import PriceUpdate
 
@@ -16,8 +15,10 @@ class MarketDataSource(ABC):
         """Stop the background task and release resources."""
 
     @abstractmethod
-    def get_price(self, ticker: str) -> Optional[PriceUpdate]:
-        """Return the latest price update for a ticker, or None if unavailable."""
+    def get_price(self, ticker: str) -> PriceUpdate | None:
+        """
+        Return the latest price update for a ticker, or None if unavailable.
+        """
 
     @abstractmethod
     def get_all_prices(self) -> dict[str, PriceUpdate]:

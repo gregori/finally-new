@@ -1,8 +1,8 @@
 """Unit tests for GBMSimulator — price engine internals."""
+
 import math
 
 import pytest
-
 from app.market.seed_prices import DEFAULT_PARAMS, SEED_PRICES, TICKER_PARAMS
 from app.market.simulator import (
     DT,
@@ -20,8 +20,10 @@ def test_tick_interval_constant():
 
 
 def test_dt_formula():
-    expected = TICK_INTERVAL_S / (TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY * 3600)
-    assert DT == pytest.approx(expected)
+    expected = TICK_INTERVAL_S / (
+        TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY * 3600
+    )
+    assert pytest.approx(expected) == DT
 
 
 def test_event_probability_positive():
@@ -30,7 +32,18 @@ def test_event_probability_positive():
 
 
 def test_seed_prices_covers_all_default_tickers():
-    expected = {"AAPL", "GOOGL", "MSFT", "AMZN", "TSLA", "NVDA", "META", "JPM", "V", "NFLX"}
+    expected = {
+        "AAPL",
+        "GOOGL",
+        "MSFT",
+        "AMZN",
+        "TSLA",
+        "NVDA",
+        "META",
+        "JPM",
+        "V",
+        "NFLX",
+    }
     assert set(SEED_PRICES.keys()) == expected
 
 
@@ -39,7 +52,7 @@ def test_ticker_params_covers_all_seed_tickers():
 
 
 def test_known_tickers_matches_seed_prices():
-    assert KNOWN_TICKERS == frozenset(SEED_PRICES.keys())
+    assert frozenset(SEED_PRICES.keys()) == KNOWN_TICKERS
 
 
 def test_default_params_has_required_keys():

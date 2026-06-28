@@ -1,8 +1,7 @@
 """Unit tests for the market data source factory."""
+
 import os
 from unittest.mock import patch
-
-import pytest
 
 from app.market.factory import create_market_data_source
 from app.market.massive_client import MassiveDataSource
@@ -45,12 +44,14 @@ def test_simulator_implements_interface():
     with patch.dict(os.environ, {}, clear=True):
         os.environ.pop("MASSIVE_API_KEY", None)
         source = create_market_data_source()
-    from app.market.interface import MarketDataSource
+    from app.market.interface import MarketDataSource  # noqa: PLC0415
+
     assert isinstance(source, MarketDataSource)
 
 
 def test_massive_implements_interface():
     with patch.dict(os.environ, {"MASSIVE_API_KEY": "abc123"}):
         source = create_market_data_source()
-    from app.market.interface import MarketDataSource
+    from app.market.interface import MarketDataSource  # noqa: PLC0415
+
     assert isinstance(source, MarketDataSource)

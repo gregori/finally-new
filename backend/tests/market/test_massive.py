@@ -1,16 +1,19 @@
-"""Unit tests for MassiveDataSource (Polygon.io REST client).
+"""
+Unit tests for MassiveDataSource (Polygon.io REST client).
 
 All HTTP calls are mocked — no real network requests are made.
 """
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+
+import logging
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-
 from app.market.cache import PriceCache
-from app.market.massive_client import FREE_TIER_POLL_INTERVAL_S, MassiveDataSource
-from app.market.models import PriceUpdate
+from app.market.massive_client import (
+    FREE_TIER_POLL_INTERVAL_S,
+    MassiveDataSource,
+)
 
 
 def make_snap(
@@ -21,7 +24,13 @@ def make_snap(
 ) -> dict:
     snap: dict = {
         "ticker": ticker,
-        "day": {"c": day_close, "o": 145.0, "h": 152.0, "l": 144.0, "v": 1_000_000},
+        "day": {
+            "c": day_close,
+            "o": 145.0,
+            "h": 152.0,
+            "l": 144.0,
+            "v": 1_000_000,
+        },
         "prevDay": {"c": prev_close, "o": 147.0, "h": 150.0, "l": 146.0},
     }
     if last_trade_price is not None:
@@ -58,16 +67,20 @@ def test_extract_prices_uses_last_trade():
 
 
 def test_extract_prices_falls_back_to_day_close():
-    snap = make_snap("AAPL", last_trade_price=None, day_close=190.0, prev_close=188.0)
+    snap = make_snap(
+        "AAPL", last_trade_price=None, day_close=190.0, prev_close=188.0
+    )
     price, prev = MassiveDataSource._extract_prices(snap)
     assert price == pytest.approx(190.0)
     assert prev == pytest.approx(188.0)
 
 
 def test_extract_prices_empty_last_trade():
-    snap = make_snap("MSFT", last_trade_price=None, day_close=415.0, prev_close=410.0)
+    snap = make_snap(
+        "MSFT", last_trade_price=None, day_close=415.0, prev_close=410.0
+    )
     snap["lastTrade"] = {}
-    price, prev = MassiveDataSource._extract_prices(snap)
+    price, _prev = MassiveDataSource._extract_prices(snap)
     assert price == pytest.approx(415.0)
 
 
@@ -76,7 +89,10 @@ def test_extract_prices_empty_last_trade():
 
 def test_parse_snapshots_returns_updates():
     source = MassiveDataSource(api_key="key")
-    snaps = [make_snap("AAPL", 190.0, 189.0, 188.0), make_snap("MSFT", 415.0, 414.0, 413.0)]
+    snaps = [
+        make_snap("AAPL", 190.0, 189.0, 188.0),
+        make_snap("MSFT", 415.0, 414.0, 413.0),
+    ]
     updates = source._parse_snapshots(snaps)
     assert len(updates) == 2
     tickers = {u.ticker for u in updates}
@@ -142,7 +158,6 @@ async def test_poll_once_429_logs_warning(caplog):
     mock_client.get.return_value = mock_resp
     source._client = mock_client
 
-    import logging
     with caplog.at_level(logging.WARNING, logger="app.market.massive_client"):
         await source._poll_once()
     assert any("rate limit" in r.message.lower() for r in caplog.records)
@@ -160,7 +175,6 @@ async def test_poll_once_403_logs_error(caplog):
     mock_client.get.return_value = mock_resp
     source._client = mock_client
 
-    import logging
     with caplog.at_level(logging.ERROR, logger="app.market.massive_client"):
         await source._poll_once()
     assert any("MASSIVE_API_KEY" in r.message for r in caplog.records)
@@ -173,7 +187,6 @@ async def test_poll_once_timeout_logs_warning(caplog):
     mock_client.get.side_effect = httpx.TimeoutException("timed out")
     source._client = mock_client
 
-    import logging
     with caplog.at_level(logging.WARNING, logger="app.market.massive_client"):
         await source._poll_once()
     assert any("timed out" in r.message.lower() for r in caplog.records)

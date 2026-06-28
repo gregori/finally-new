@@ -12,7 +12,9 @@ class PriceUpdate:
     change_pct: float
 
     @classmethod
-    def from_prices(cls, ticker: str, price: float, prev_price: float) -> "PriceUpdate":
+    def from_prices(
+        cls, ticker: str, price: float, prev_price: float
+    ) -> "PriceUpdate":
         change = price - prev_price
         change_pct = (change / prev_price * 100) if prev_price else 0.0
         return cls(

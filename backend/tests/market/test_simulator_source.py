@@ -1,7 +1,6 @@
 """Integration tests for SimulatorDataSource — the full async provider."""
-import asyncio
 
-import pytest
+import asyncio
 
 from app.market.simulator import SimulatorDataSource
 
@@ -101,7 +100,8 @@ async def test_prices_update_over_time():
     price2 = source.get_price("NVDA")
     assert price1 is not None
     assert price2 is not None
-    # Two consecutive samples should almost certainly differ (extremely unlikely to match exactly)
+    # Two consecutive samples should almost certainly differ (extremely
+    # unlikely to match exactly)
     # but we only assert both are valid prices > 0
     assert price1.price > 0
     assert price2.price > 0

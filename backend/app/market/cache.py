@@ -1,11 +1,11 @@
 import asyncio
-from typing import Optional
 
 from .models import PriceUpdate
 
 
 class PriceCache:
-    """Thread-safe in-memory cache of latest prices per ticker.
+    """
+    Thread-safe in-memory cache of latest prices per ticker.
 
     Producers (simulator/Massive poller) write via set/set_many.
     Consumers (SSE handlers, API routes) read via get/get_all.
@@ -30,10 +30,10 @@ class PriceCache:
             if updates:
                 self._version += 1
 
-    def get(self, ticker: str) -> Optional[PriceUpdate]:
+    def get(self, ticker: str) -> PriceUpdate | None:
         return self._data.get(ticker)
 
-    def get_price(self, ticker: str) -> Optional[float]:
+    def get_price(self, ticker: str) -> float | None:
         update = self._data.get(ticker)
         return update.price if update else None
 

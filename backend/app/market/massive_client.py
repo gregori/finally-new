@@ -1,6 +1,7 @@
 import asyncio
+import contextlib
 import logging
-from typing import Optional
+from http import HTTPStatus
 
 import httpx
 
@@ -15,7 +16,8 @@ FREE_TIER_POLL_INTERVAL_S = 15.0
 
 
 class MassiveDataSource(MarketDataSource):
-    """MarketDataSource that polls the Massive (Polygon.io) REST API.
+    """
+    MarketDataSource that polls the Massive (Polygon.io) REST API.
 
     Uses the v2 snapshot endpoint which accepts a comma-separated ticker list,
     fetching all watched tickers in a single request per poll cycle.
@@ -29,8 +31,8 @@ class MassiveDataSource(MarketDataSource):
         self._poll_interval_s = poll_interval_s
         self._cache = PriceCache()
         self._tickers: set[str] = set()
-        self._task: Optional[asyncio.Task] = None
-        self._client: Optional[httpx.AsyncClient] = None
+        self._task: asyncio.Task | None = None
+        self._client: httpx.AsyncClient | None = None
 
     async def start(self, tickers: list[str]) -> None:
         self._tickers = {t.upper() for t in tickers}
@@ -40,16 +42,14 @@ class MassiveDataSource(MarketDataSource):
     async def stop(self) -> None:
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
         if self._client:
             await self._client.aclose()
             self._client = None
 
-    def get_price(self, ticker: str) -> Optional[PriceUpdate]:
+    def get_price(self, ticker: str) -> PriceUpdate | None:
         return self._cache.get(ticker.upper())
 
     def get_all_prices(self) -> dict[str, PriceUpdate]:
@@ -66,17 +66,25 @@ class MassiveDataSource(MarketDataSource):
     async def validate_ticker(self, ticker: str) -> bool:
         """Check the ticker against Polygon's reference endpoint."""
         ticker = ticker.upper().strip()
-        if not ticker or not ticker.isalpha() or len(ticker) > 5:
+        max_ticker_lenght = 5
+        if (
+            not ticker
+            or not ticker.isalpha()
+            or len(ticker) > max_ticker_lenght
+        ):
             return False
         if self._client is None:
             return False
         try:
             url = f"{BASE_URL}/v3/reference/tickers/{ticker}"
-            resp = await self._client.get(url, params={"apiKey": self._api_key})
-            if resp.status_code == 200:
+            resp = await self._client.get(
+                url, params={"apiKey": self._api_key}
+            )
+            if resp.status_code == HTTPStatus.OK:
                 return resp.json().get("status") == "OK"
+        except httpx.HTTPError:
             return False
-        except (httpx.HTTPError, Exception):
+        else:
             return False
 
     def get_tickers(self) -> set[str]:
@@ -103,16 +111,24 @@ class MassiveDataSource(MarketDataSource):
                 await self._cache.set_many(updates)
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
-            if status == 429:
-                logger.warning("Massive API rate limit exceeded; backing off one extra cycle")
+            if status == HTTPStatus.TOO_MANY_REQUESTS:
+                logger.warning(
+                    "Massive API rate limit exceeded; "
+                    "backing off one extra cycle"
+                )
                 await asyncio.sleep(self._poll_interval_s)
-            elif status == 403:
-                logger.error("Massive API rejected request: invalid MASSIVE_API_KEY")
+            elif status == HTTPStatus.FORBIDDEN:
+                logger.exception(
+                    "Massive API rejected request: invalid MASSIVE_API_KEY"
+                )
             else:
                 logger.warning("Massive API HTTP error %s: %s", status, exc)
         except httpx.TimeoutException:
             logger.warning("Massive API poll timed out; skipping cycle")
-        except Exception as exc:
+        except (httpx.HTTPError, ValueError) as exc:
+            # Handle remaining HTTP-related errors and JSON/decoding errors.
+            # Let asyncio.CancelledError propagate so task cancellation works
+            # as expected.
             logger.warning("Massive API poll failed unexpectedly: %s", exc)
 
     def _parse_snapshots(self, snapshots: list[dict]) -> list[PriceUpdate]:
@@ -123,14 +139,17 @@ class MassiveDataSource(MarketDataSource):
                 continue
             try:
                 price, prev_price = self._extract_prices(snap)
-                updates.append(PriceUpdate.from_prices(ticker, price, prev_price))
+                updates.append(
+                    PriceUpdate.from_prices(ticker, price, prev_price)
+                )
             except (KeyError, TypeError, ValueError):
                 logger.warning("Could not parse snapshot for %s", ticker)
         return updates
 
     @staticmethod
     def _extract_prices(snap: dict) -> tuple[float, float]:
-        """Extract current price and previous close from a Polygon snapshot dict.
+        """
+        Extract current price and previous close from a Polygon snapshot dict.
 
         Prefers lastTrade.p (most current trade) over day.c (session close).
         prev_price is always the previous session close (prevDay.c).
