@@ -1,251 +1,321 @@
 # Massive API Reference (formerly Polygon.io)
 
-Reference documentation for the Massive (formerly Polygon.io) REST API as used in FinAlly.
+Massive.com rebranded from Polygon.io on October 30, 2025. All existing `api.polygon.io` integrations remain compatible — the base URL has not changed. This document covers only the endpoints needed by FinAlly: fetching current prices for a set of watched tickers.
 
-## Overview
+---
 
-- **Base URL**: `https://api.massive.com` (legacy `https://api.polygon.io` still supported)
-- **Python package**: `massive` (install via `pip install -U massive` / `uv add massive`)
-- **Min Python version**: 3.9+
-- **Auth**: API key via `MASSIVE_API_KEY` env var or passed to `RESTClient(api_key=...)`
-- **Auth header**: `Authorization: Bearer <API_KEY>` (the client handles this automatically)
+## Authentication
 
-## Rate Limits
+Every request requires an API key. Two options:
 
-| Tier | Limit |
-|------|-------|
-| Free | 5 requests/minute |
-| Paid (all tiers) | Unlimited (recommended: stay under 100 req/s) |
+**Query parameter (simplest for direct HTTP calls):**
+```
+GET https://api.polygon.io/v2/snapshot/...?apiKey=YOUR_KEY
+```
 
-For FinAlly, we poll on a timer. Free tier: poll every 15s. Paid: poll every 2-5s.
+**Authorization header (preferred for production):**
+```
+Authorization: Bearer YOUR_KEY
+```
 
-## Client Initialization
+The Python client handles this automatically via the constructor.
+
+---
+
+## Python Client
+
+Massive ships an official Python client (renamed from `polygon-api-client`).
+
+```bash
+pip install -U massive
+```
+
+Requires Python 3.9+.
 
 ```python
 from massive import RESTClient
 
-# Reads MASSIVE_API_KEY from environment automatically
-client = RESTClient()
-
-# Or pass explicitly
-client = RESTClient(api_key="your_key_here")
+client = RESTClient(api_key="YOUR_KEY")
 ```
 
-## Endpoints Used in FinAlly
+The client handles pagination, retries, and deserialization. All returned objects support attribute access (e.g., `result.ticker`, `result.day.c`).
 
-### 1. Snapshot — All Tickers (Primary Endpoint)
+---
 
-Gets current prices for multiple tickers in a **single API call**. This is the main endpoint we use for polling.
+## Endpoints
 
-**REST**: `GET /v2/snapshot/locale/us/markets/stocks/tickers?tickers=AAPL,GOOGL,MSFT`
+### 1. Full Market Snapshot — multiple tickers (recommended for FinAlly)
 
-**Python client**:
-```python
-from massive import RESTClient
-from massive.rest.models import SnapshotMarketType
+Fetches current snapshot data for a comma-separated list of tickers in one request. This is the primary endpoint for polling the watched tickers list.
 
-client = RESTClient()
-
-# Get snapshots for specific tickers (one API call)
-snapshots = client.get_snapshot_all(
-    market_type=SnapshotMarketType.STOCKS,
-    tickers=["AAPL", "GOOGL", "MSFT", "AMZN", "TSLA"],
-)
-
-for snap in snapshots:
-    print(f"{snap.ticker}: ${snap.last_trade.price}")
-    print(f"  Day change: {snap.day.change_percent}%")
-    print(f"  Day OHLC: O={snap.day.open} H={snap.day.high} L={snap.day.low} C={snap.day.close}")
-    print(f"  Volume: {snap.day.volume}")
+```
+GET /v2/snapshot/locale/us/markets/stocks/tickers
 ```
 
-**Response structure** (per ticker):
+**Query parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `tickers` | string | No | Comma-separated ticker list (e.g. `AAPL,GOOGL,MSFT`). Omit to get all ~10,000+ active symbols. |
+| `include_otc` | boolean | No | Include OTC securities. Default: `false`. |
+| `apiKey` | string | Yes (or header) | Your API key. |
+
+**Response structure:**
 ```json
 {
-  "ticker": "AAPL",
-  "day": {
-    "open": 129.61,
-    "high": 130.15,
-    "low": 125.07,
-    "close": 125.07,
-    "volume": 111237700,
-    "volume_weighted_average_price": 127.35,
-    "previous_close": 129.61,
-    "change": -4.54,
-    "change_percent": -3.50
-  },
-  "last_trade": {
-    "price": 125.07,
-    "size": 100,
-    "exchange": "XNYS",
-    "timestamp": 1675190399000
-  },
-  "last_quote": {
-    "bid_price": 125.06,
-    "ask_price": 125.08,
-    "bid_size": 500,
-    "ask_size": 1000,
-    "spread": 0.02,
-    "timestamp": 1675190399500
-  },
-  "prev_daily_bar": { "...": "previous day OHLCV" },
-  "minute_volume": { "...": "volume per minute" }
-}
-```
-
-**Key fields we extract**:
-- `last_trade.price` — current price for trading and display
-- `day.previous_close` — for calculating day change
-- `day.change_percent` — day change percentage
-- `last_trade.timestamp` — when the price was recorded
-
-### 2. Single Ticker Snapshot
-
-For getting detailed data on one ticker (e.g., when user clicks a ticker for the detail view).
-
-**Python client**:
-```python
-snapshot = client.get_snapshot_ticker(
-    market_type=SnapshotMarketType.STOCKS,
-    ticker="AAPL",
-)
-
-print(f"Price: ${snapshot.last_trade.price}")
-print(f"Bid/Ask: ${snapshot.last_quote.bid_price} / ${snapshot.last_quote.ask_price}")
-print(f"Day range: ${snapshot.day.low} - ${snapshot.day.high}")
-```
-
-### 3. Previous Close
-
-Gets the previous day's OHLC for a ticker. Useful for seed prices.
-
-**REST**: `GET /v2/aggs/ticker/{ticker}/prev`
-
-**Python client**:
-```python
-prev = client.get_previous_close_agg(ticker="AAPL")
-
-for agg in prev:
-    print(f"Previous close: ${agg.close}")
-    print(f"OHLC: O={agg.open} H={agg.high} L={agg.low} C={agg.close}")
-    print(f"Volume: {agg.volume}")
-```
-
-**Response**:
-```json
-{
-  "ticker": "AAPL",
-  "results": [
+  "status": "OK",
+  "count": 3,
+  "tickers": [
     {
-      "o": 150.0,
-      "h": 155.0,
-      "l": 149.0,
-      "c": 154.5,
-      "v": 1000000,
-      "t": 1672531200000
+      "ticker": "AAPL",
+      "todaysChange": 1.23,
+      "todaysChangePerc": 0.65,
+      "updated": 1718304000000000000,
+      "day": {
+        "o": 189.50,
+        "h": 191.20,
+        "l": 188.90,
+        "c": 190.73,
+        "v": 52431000,
+        "vw": 190.12
+      },
+      "lastTrade": {
+        "p": 190.73,
+        "s": 100,
+        "t": 1718304000000000000
+      },
+      "lastQuote": {
+        "P": 190.74,
+        "S": 2,
+        "p": 190.73,
+        "s": 8
+      },
+      "min": {
+        "o": 190.60,
+        "h": 190.80,
+        "l": 190.55,
+        "c": 190.73,
+        "v": 12300,
+        "vw": 190.68
+      },
+      "prevDay": {
+        "o": 188.20,
+        "h": 189.70,
+        "l": 187.50,
+        "c": 189.50,
+        "v": 48200000
+      }
     }
   ]
 }
 ```
 
-### 4. Aggregates (Bars)
+**Key fields per ticker:**
 
-Historical OHLCV bars over a date range. Not needed for live polling but useful if we add historical charts.
+| Field | Description |
+|---|---|
+| `ticker` | Symbol |
+| `day.c` | Current day's closing/latest price |
+| `day.o` / `day.h` / `day.l` | Day open, high, low |
+| `day.v` | Day volume |
+| `prevDay.c` | Previous day close (for % change calculation) |
+| `lastTrade.p` | Most recent trade price (most current) |
+| `todaysChange` | Absolute change from previous close |
+| `todaysChangePerc` | Percentage change from previous close |
+| `updated` | Nanosecond timestamp of last update |
 
-**REST**: `GET /v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from}/{to}`
-
-**Python client**:
+**Python example using the `massive` client:**
 ```python
-aggs = []
-for a in client.list_aggs(
-    ticker="AAPL",
-    multiplier=1,
-    timespan="day",
-    from_="2024-01-01",
-    to="2024-01-31",
-    limit=50000,
-):
-    aggs.append(a)
+from massive import RESTClient
 
-for a in aggs:
-    print(f"Date: {a.timestamp}, O={a.open} H={a.high} L={a.low} C={a.close} V={a.volume}")
+client = RESTClient(api_key=os.environ["MASSIVE_API_KEY"])
+
+tickers = ["AAPL", "GOOGL", "MSFT", "TSLA"]
+snapshots = client.get_snapshot_all("us", tickers)
+
+for snap in snapshots:
+    price = snap.last_trade.price if snap.last_trade else snap.day.close
+    prev_close = snap.prev_day.close
+    print(f"{snap.ticker}: ${price:.2f}  ({snap.todays_change_perc:+.2f}%)")
 ```
 
-**Response** (each bar):
+**Python example using raw `httpx`/`requests` (no client library):**
+```python
+import httpx
+
+BASE_URL = "https://api.polygon.io"
+
+def fetch_snapshots(api_key: str, tickers: list[str]) -> dict:
+    url = f"{BASE_URL}/v2/snapshot/locale/us/markets/stocks/tickers"
+    params = {
+        "tickers": ",".join(tickers),
+        "apiKey": api_key,
+    }
+    resp = httpx.get(url, params=params, timeout=10.0)
+    resp.raise_for_status()
+    return resp.json()
+
+data = fetch_snapshots(os.environ["MASSIVE_API_KEY"], ["AAPL", "GOOGL"])
+for snap in data["tickers"]:
+    last_price = snap["lastTrade"]["p"] if snap.get("lastTrade") else snap["day"]["c"]
+    print(f"{snap['ticker']}: ${last_price}")
+```
+
+---
+
+### 2. Single Ticker Snapshot
+
+Useful for fetching one ticker on demand (e.g., when the user adds a new ticker to their watchlist).
+
+```
+GET /v2/snapshot/locale/us/markets/stocks/tickers/{stocksTicker}
+```
+
+**Path parameters:**
+
+| Parameter | Description |
+|---|---|
+| `stocksTicker` | Case-sensitive ticker symbol (e.g., `AAPL`) |
+
+**Sample response:**
 ```json
 {
-  "o": 130.0,
-  "h": 132.5,
-  "l": 129.8,
-  "c": 131.2,
-  "v": 50000000,
-  "t": 1672531200000
+  "status": "OK",
+  "request_id": "657e430f1ae768891f018e08e03598d8",
+  "ticker": {
+    "ticker": "AAPL",
+    "day": { "c": 190.73, "h": 191.20, "l": 188.90, "o": 189.50, "v": 52431000, "vw": 190.12 },
+    "min": { "c": 190.73, "h": 190.80, "l": 190.55, "o": 190.60 },
+    "prevDay": { "c": 189.50, "h": 189.70, "l": 187.50, "o": 188.20 },
+    "lastTrade": { "p": 190.73, "s": 100, "t": 1718304000000000000 },
+    "todaysChange": 1.23,
+    "todaysChangePerc": 0.65,
+    "updated": 1718304000000000000
+  }
 }
 ```
 
-### 5. Last Trade / Last Quote
-
-Individual endpoints for the most recent trade or NBBO quote.
-
+**Python example:**
 ```python
-# Last trade
-trade = client.get_last_trade(ticker="AAPL")
-print(f"Last trade: ${trade.price} x {trade.size}")
-
-# Last NBBO quote
-quote = client.get_last_quote(ticker="AAPL")
-print(f"Bid: ${quote.bid} x {quote.bid_size}")
-print(f"Ask: ${quote.ask} x {quote.ask_size}")
+def fetch_single_snapshot(api_key: str, ticker: str) -> dict | None:
+    url = f"{BASE_URL}/v2/snapshot/locale/us/markets/stocks/tickers/{ticker}"
+    resp = httpx.get(url, params={"apiKey": api_key}, timeout=10.0)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("ticker")
 ```
 
-## How FinAlly Uses the API
+---
 
-The Massive poller runs as a background task:
+### 3. Unified Snapshot (v3) — alternative for up to 250 tickers
 
-1. Collects all tickers from the watchlist
-2. Calls `get_snapshot_all()` with those tickers (one API call)
-3. Extracts `last_trade.price` and `day.previous_close` from each snapshot
-4. Writes to the shared in-memory price cache
-5. Sleeps for the poll interval, then repeats
+A newer endpoint that supports multiple asset classes in one call. Accepts up to 250 symbols via `ticker.any_of`.
+
+```
+GET /v3/snapshot
+```
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `ticker.any_of` | string | Comma-separated list, max 250 symbols |
+| `type` | string | Filter by asset class (`stocks`, `options`, `fx`, `crypto`, `indices`) |
+| `limit` | integer | Max results per page (max 250, default 10) |
+
+**Plan requirement:** Stocks Starter and above (no free tier access).
+
+**Note:** For FinAlly we default to the v2 endpoint (`/v2/snapshot/locale/us/markets/stocks/tickers`) because it is available on the free tier and supports our 10-ticker watchlist easily.
+
+---
+
+## Ticker Validation
+
+To check whether a ticker symbol exists before adding it to the watchlist:
+
+```
+GET /v3/reference/tickers/{ticker}
+```
 
 ```python
-import asyncio
-from massive import RESTClient
-from massive.rest.models import SnapshotMarketType
-
-async def poll_massive(api_key: str, get_tickers, price_cache, interval: float = 15.0):
-    """Poll Massive API and update the price cache."""
-    client = RESTClient(api_key=api_key)
-
-    while True:
-        tickers = get_tickers()
-        if tickers:
-            snapshots = client.get_snapshot_all(
-                market_type=SnapshotMarketType.STOCKS,
-                tickers=tickers,
-            )
-            for snap in snapshots:
-                price_cache.update(
-                    ticker=snap.ticker,
-                    price=snap.last_trade.price,
-                    previous_close=snap.day.previous_close,
-                    timestamp=snap.last_trade.timestamp,
-                )
-
-        await asyncio.sleep(interval)
+def is_valid_ticker(api_key: str, ticker: str) -> bool:
+    url = f"{BASE_URL}/v3/reference/tickers/{ticker}"
+    resp = httpx.get(url, params={"apiKey": api_key}, timeout=10.0)
+    if resp.status_code == 200:
+        return resp.json().get("status") == "OK"
+    return False
 ```
+
+Alternatively, use the snapshot endpoint: a 200 response with `ticker` data confirms the symbol exists; a `"NOT_FOUND"` status or absent `ticker` key means it does not.
+
+---
+
+## Rate Limits and Tiers
+
+| Plan | Rate limit | Data recency |
+|---|---|---|
+| Free | 5 requests/minute | 15-minute delayed |
+| Starter / Developer | Unlimited | 15-minute delayed |
+| Advanced / Business | Unlimited (< 100 req/s recommended) | Real-time |
+
+**FinAlly polling strategy:**
+- Free tier: poll every 15 seconds (4 req/min — safely under the 5 req/min cap)
+- Paid tiers: poll every 2–15 seconds depending on user preference
+- A single poll call fetches all watched tickers in one request (the v2 endpoint accepts an arbitrary comma-separated list)
+
+---
+
+## Price Extraction Logic
+
+The `lastTrade.p` field is the most current price during market hours. During pre/post-market or when trades are absent, fall back to `day.c`. The previous close is always in `prevDay.c`.
+
+```python
+def extract_price(snap: dict) -> tuple[float, float]:
+    """Returns (current_price, prev_close)."""
+    last_trade = snap.get("lastTrade") or {}
+    current = last_trade.get("p") or snap["day"]["c"]
+    prev_close = snap["prevDay"]["c"]
+    return float(current), float(prev_close)
+```
+
+---
 
 ## Error Handling
 
-The client raises exceptions for HTTP errors:
-- **401**: Invalid API key
-- **403**: Insufficient permissions (plan doesn't include the endpoint)
-- **429**: Rate limit exceeded (free tier: 5 req/min)
-- **5xx**: Server errors (client has built-in retry with 3 retries by default)
+| HTTP Status | Meaning |
+|---|---|
+| 200 | Success |
+| 400 | Bad request (malformed parameters) |
+| 403 | Invalid or missing API key |
+| 404 | Ticker not found (single-ticker endpoint) |
+| 429 | Rate limit exceeded |
+| 500 | Massive server error |
 
-## Notes
+```python
+import httpx
 
-- The snapshot endpoint returns data for **all requested tickers in one call** — this is critical for staying within rate limits on the free tier
-- Timestamps from the API are Unix milliseconds
-- During market closed hours, `last_trade.price` reflects the last traded price (may include after-hours)
-- The `day` object resets at market open; during pre-market, values may be from the previous session
+try:
+    resp = httpx.get(url, params=params, timeout=10.0)
+    resp.raise_for_status()
+except httpx.HTTPStatusError as e:
+    if e.response.status_code == 429:
+        # back off and retry
+        pass
+    elif e.response.status_code == 403:
+        raise RuntimeError("Invalid MASSIVE_API_KEY") from e
+    else:
+        raise
+except httpx.TimeoutException:
+    # log and skip this poll cycle
+    pass
+```
+
+---
+
+## Market Hours
+
+The snapshot data is cleared at **3:30 AM EST** and begins repopulating from **4:00 AM EST** as exchanges open pre-market. During closed hours, `day.*` fields reflect the most recent session; `prevDay.*` holds the last completed session.
+
+FinAlly does not restrict trading to market hours — the simulator and the displayed prices work 24/7, but real Massive data will show stale prices outside market hours. This is acceptable for the course project scope.
