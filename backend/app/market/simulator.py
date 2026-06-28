@@ -15,11 +15,9 @@ TICK_INTERVAL_S = 0.5
 TRADING_DAYS_PER_YEAR = 252
 TRADING_HOURS_PER_DAY = 6.5
 DT = TICK_INTERVAL_S / (TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY * 3600)
-# ~0.1% chance per ticker per tick → roughly one event every 30 real seconds
-# across all tickers
-EVENT_PROBABILITY = TICK_INTERVAL_S / (
-    TRADING_DAYS_PER_YEAR * TRADING_HOURS_PER_DAY * 3600 / 30
-)
+# Target: one shock every ~30 real seconds across ~10 tickers.
+# P = tick_interval / (target_seconds * target_tickers) = 0.5 / (30 * 10)
+EVENT_PROBABILITY = TICK_INTERVAL_S / (30 * 10)
 
 KNOWN_TICKERS: frozenset[str] = frozenset(SEED_PRICES.keys())
 
