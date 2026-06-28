@@ -28,7 +28,6 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from app.market.cache import PriceCache
 from app.market.models import PriceUpdate
 from app.market.simulator import SimulatorDataSource
 
@@ -201,8 +200,8 @@ def make_layout() -> Layout:
 
 async def run_demo(tickers: list[str], duration: int) -> None:
     console = Console()
+    console.print(f"[bold #ecad0a]FinAlly[/] Market Data Demo — starting simulator for {len(tickers)} tickers ({duration}s)…")
 
-    cache = PriceCache()
     source = SimulatorDataSource()
     await source.start(tickers)
 
@@ -210,12 +209,13 @@ async def run_demo(tickers: list[str], duration: int) -> None:
     events: deque = deque(maxlen=MAX_EVENTS)
     total_ticks = 0
     last_version = -1
-    start_time = asyncio.get_event_loop().time()
+    loop = asyncio.get_running_loop()
+    start_time = loop.time()
 
     layout = make_layout()
 
     def refresh():
-        elapsed = asyncio.get_event_loop().time() - start_time
+        elapsed = loop.time() - start_time
         layout["header"].update(make_header(elapsed, duration, total_ticks))
         layout["prices"].update(
             Panel(
@@ -240,17 +240,17 @@ async def run_demo(tickers: list[str], duration: int) -> None:
         )
 
     try:
-        with Live(layout, console=console, refresh_per_second=4, screen=True):
+        with Live(layout, console=console, refresh_per_second=4):
             deadline = start_time + duration
-            while asyncio.get_event_loop().time() < deadline:
+            while loop.time() < deadline:
                 await asyncio.sleep(0.12)
 
-                current_version = cache.version
+                current_version = source.version
                 if current_version == last_version:
                     continue
                 last_version = current_version
 
-                all_prices = cache.get_all()
+                all_prices = source.get_all_prices()
                 for ticker, update in all_prices.items():
                     if ticker not in states:
                         states[ticker] = TickerState(ticker)
