@@ -47,13 +47,12 @@ async def _generate_events(
     underlying cache has been updated since the last push cycle.
     """
     last_version = -1
-    cache = getattr(source, "_cache", None)
 
     while True:
         if await request.is_disconnected():
             break
 
-        current_version = cache.version if cache is not None else 0
+        current_version = source.version
         if current_version != last_version:
             prices = source.get_all_prices()
             for update in prices.values():

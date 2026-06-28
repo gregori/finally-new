@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
+
 from app.market.cache import PriceCache
 from app.market.massive_client import (
     FREE_TIER_POLL_INTERVAL_S,
@@ -252,3 +253,72 @@ async def test_validate_ticker_404_returns_false():
     mock_client.get.return_value = mock_resp
     source._client = mock_client
     assert await source.validate_ticker("ZZZZZ") is False
+
+
+async def test_validate_ticker_before_start_logs_warning(caplog):
+    source = MassiveDataSource(api_key="key")
+    # _client is None by default (start() not called)
+    with caplog.at_level(logging.WARNING, logger="app.market.massive_client"):
+        result = await source.validate_ticker("AAPL")
+    assert result is False
+    assert any("before start" in r.message for r in caplog.records)
+
+
+# --- start / stop lifecycle ---
+
+
+async def test_start_creates_client_and_task():
+    source = MassiveDataSource(api_key="key", poll_interval_s=60.0)
+    await source.start(["AAPL"])
+    assert source._client is not None
+    assert source._task is not None
+    await source.stop()
+
+
+async def test_stop_closes_client_and_clears_task():
+    source = MassiveDataSource(api_key="key", poll_interval_s=60.0)
+    await source.start(["AAPL"])
+    await source.stop()
+    assert source._client is None
+    assert source._task is None
+
+
+async def test_stop_is_idempotent():
+    source = MassiveDataSource(api_key="key", poll_interval_s=60.0)
+    await source.start(["AAPL"])
+    await source.stop()
+    await source.stop()  # second stop must not raise
+
+
+async def test_start_populates_ticker_set():
+    source = MassiveDataSource(api_key="key", poll_interval_s=60.0)
+    await source.start(["aapl", "MSFT"])
+    assert source.get_tickers() == {"AAPL", "MSFT"}
+    await source.stop()
+
+
+# --- version property ---
+
+
+async def test_version_starts_at_zero():
+    source = MassiveDataSource(api_key="key")
+    assert source.version == 0
+
+
+async def test_version_increments_after_successful_poll():
+    source = MassiveDataSource(api_key="key", poll_interval_s=0.01)
+    source._tickers = {"AAPL"}
+    source._cache = PriceCache()
+
+    payload = {"tickers": [make_snap("AAPL", 190.0, 189.0, 188.0)]}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.raise_for_status.return_value = None
+    mock_resp.json.return_value = payload
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_resp
+    source._client = mock_client
+
+    version_before = source.version
+    await source._poll_once()
+    assert source.version > version_before

@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 import math
 import random
 
@@ -7,6 +8,8 @@ from .cache import PriceCache
 from .interface import MarketDataSource
 from .models import PriceUpdate
 from .seed_prices import DEFAULT_PARAMS, SEED_PRICES, TICKER_PARAMS
+
+logger = logging.getLogger(__name__)
 
 TICK_INTERVAL_S = 0.5
 TRADING_DAYS_PER_YEAR = 252
@@ -140,9 +143,16 @@ class SimulatorDataSource(MarketDataSource):
     def get_tickers(self) -> set[str]:
         return self._simulator.get_tickers()
 
+    @property
+    def version(self) -> int:
+        return self._cache.version
+
     async def _tick_loop(self) -> None:
         while True:
-            updates = self._simulator.tick()
-            if updates:
-                await self._cache.set_many(updates)
+            try:
+                updates = self._simulator.tick()
+                if updates:
+                    await self._cache.set_many(updates)
+            except Exception:
+                logger.exception("Unexpected error in simulator tick loop")
             await asyncio.sleep(TICK_INTERVAL_S)
