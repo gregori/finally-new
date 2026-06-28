@@ -45,18 +45,29 @@ class TickerState:
     ticker: str
     price: float = 0.0
     prev_price: float = 0.0
+    start_price: float = 0.0
     history: deque = field(default_factory=lambda: deque(maxlen=SPARKLINE_WIDTH))
     ticks: int = 0
 
     @property
-    def change(self) -> float:
-        return self.price - self.prev_price if self.prev_price else 0.0
+    def session_change(self) -> float:
+        """Cumulative change since first price received."""
+        return self.price - self.start_price if self.start_price else 0.0
 
     @property
-    def change_pct(self) -> float:
-        return (self.change / self.prev_price * 100) if self.prev_price else 0.0
+    def session_change_pct(self) -> float:
+        return (self.session_change / self.start_price * 100) if self.start_price else 0.0
+
+    @property
+    def tick_change_pct(self) -> float:
+        """Last-tick change, used only for the ▲/▼ arrow direction."""
+        if not self.prev_price:
+            return 0.0
+        return (self.price - self.prev_price) / self.prev_price * 100
 
     def update(self, u: PriceUpdate) -> None:
+        if self.start_price == 0.0:
+            self.start_price = u.price
         self.prev_price = self.price if self.price else u.prev_price
         self.price = u.price
         self.history.append(u.price)
@@ -110,8 +121,8 @@ def make_price_table(states: dict[str, TickerState]) -> Table:
 
     table.add_column("TICKER", style="bold #209dd7", width=8)
     table.add_column("PRICE", justify="right", width=10)
-    table.add_column("CHG", justify="right", width=8)
-    table.add_column("CHG %", justify="right", width=8)
+    table.add_column("SESSION CHG", justify="right", width=11)
+    table.add_column("SESSION %", justify="right", width=10)
     table.add_column("SPARKLINE", width=SPARKLINE_WIDTH + 2)
     table.add_column("TICKS", justify="right", style="dim", width=6)
 
@@ -121,11 +132,11 @@ def make_price_table(states: dict[str, TickerState]) -> Table:
             table.add_row(ticker, "–", "–", "–", Text("·" * SPARKLINE_WIDTH, style="dim"), "0")
             continue
 
-        chg = s.change
-        pct = s.change_pct
-        arrow = make_arrow(chg)
+        chg = s.session_change
+        pct = s.session_change_pct
+        arrow = make_arrow(s.tick_change_pct)
 
-        price_style = "bold green" if chg > 0 else "bold red" if chg < 0 else "white"
+        price_style = "bold green" if s.tick_change_pct > 0 else "bold red" if s.tick_change_pct < 0 else "white"
         price_text = Text(f"${s.price:>8.2f}", style=price_style)
 
         chg_text = Text(f"{chg:+.2f}", style="green" if chg >= 0 else "red")
