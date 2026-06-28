@@ -28,7 +28,6 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from app.market.cache import PriceCache
 from app.market.models import PriceUpdate
 from app.market.simulator import SimulatorDataSource
 
@@ -203,7 +202,6 @@ async def run_demo(tickers: list[str], duration: int) -> None:
     console = Console()
     console.print(f"[bold #ecad0a]FinAlly[/] Market Data Demo — starting simulator for {len(tickers)} tickers ({duration}s)…")
 
-    cache = PriceCache()
     source = SimulatorDataSource()
     await source.start(tickers)
 
@@ -247,12 +245,12 @@ async def run_demo(tickers: list[str], duration: int) -> None:
             while loop.time() < deadline:
                 await asyncio.sleep(0.12)
 
-                current_version = cache.version
+                current_version = source.version
                 if current_version == last_version:
                     continue
                 last_version = current_version
 
-                all_prices = cache.get_all()
+                all_prices = source.get_all_prices()
                 for ticker, update in all_prices.items():
                     if ticker not in states:
                         states[ticker] = TickerState(ticker)
