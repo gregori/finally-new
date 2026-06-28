@@ -66,14 +66,19 @@ class MassiveDataSource(MarketDataSource):
     async def validate_ticker(self, ticker: str) -> bool:
         """Check the ticker against Polygon's reference endpoint."""
         ticker = ticker.upper().strip()
-        max_ticker_lenght = 5
+        max_ticker_length = 5
         if (
             not ticker
             or not ticker.isalpha()
-            or len(ticker) > max_ticker_lenght
+            or len(ticker) > max_ticker_length
         ):
             return False
         if self._client is None:
+            logger.warning(
+                "validate_ticker called before start(); "
+                "returning False for %s",
+                ticker,
+            )
             return False
         try:
             url = f"{BASE_URL}/v3/reference/tickers/{ticker}"
@@ -89,6 +94,10 @@ class MassiveDataSource(MarketDataSource):
 
     def get_tickers(self) -> set[str]:
         return set(self._tickers)
+
+    @property
+    def version(self) -> int:
+        return self._cache.version
 
     async def _poll_loop(self) -> None:
         while True:

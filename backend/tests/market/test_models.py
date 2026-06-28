@@ -3,6 +3,7 @@
 import time
 
 import pytest
+
 from app.market.models import PriceUpdate
 
 

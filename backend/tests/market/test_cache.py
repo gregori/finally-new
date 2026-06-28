@@ -1,6 +1,9 @@
 """Unit tests for PriceCache."""
 
+import asyncio
+
 import pytest
+
 from app.market.cache import PriceCache
 from app.market.models import PriceUpdate
 
@@ -99,3 +102,33 @@ async def test_overwrite_updates_price():
     await cache.set(make_update("AAPL", 190.0))
     await cache.set(make_update("AAPL", 195.0))
     assert cache.get_price("AAPL") == pytest.approx(195.0)
+
+
+async def test_concurrent_writers_do_not_corrupt_cache():
+    """Multiple concurrent set_many calls must all land without data loss."""
+    cache = PriceCache()
+    tickers_a = ["AAPL", "MSFT", "GOOGL"]
+    tickers_b = ["TSLA", "NVDA", "META"]
+
+    async def write_batch(tickers: list[str], price: float) -> None:
+        for _ in range(20):
+            updates = [make_update(t, price) for t in tickers]
+            await cache.set_many(updates)
+
+    await asyncio.gather(
+        write_batch(tickers_a, 100.0), write_batch(tickers_b, 200.0)
+    )
+
+    for t in tickers_a:
+        assert cache.get(t) is not None
+    for t in tickers_b:
+        assert cache.get(t) is not None
+    assert cache.version > 0
+
+
+async def test_remove_increments_version():
+    cache = PriceCache()
+    await cache.set(make_update("AAPL"))
+    version_before = cache.version
+    await cache.remove("AAPL")
+    assert cache.version > version_before

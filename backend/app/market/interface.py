@@ -39,3 +39,15 @@ class MarketDataSource(ABC):
     def get_tickers(self) -> set[str]:
         """Return the set of currently tracked ticker symbols."""
         return set(self.get_all_prices().keys())
+
+    @property
+    def version(self) -> int:
+        """
+        Monotonically increasing counter that increments whenever prices
+        are updated. SSE handlers use this to detect changes without
+        comparing individual price values.
+
+        The default implementation returns 0 (always changed). Concrete
+        sources should override this to expose their cache's version counter.
+        """
+        return 0

@@ -3,6 +3,7 @@
 import math
 
 import pytest
+
 from app.market.seed_prices import DEFAULT_PARAMS, SEED_PRICES, TICKER_PARAMS
 from app.market.simulator import (
     DT,
