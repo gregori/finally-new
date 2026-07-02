@@ -11,7 +11,7 @@ from .models import PriceUpdate
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://api.polygon.io"
+BASE_URL = "https://api.massive.com"
 FREE_TIER_POLL_INTERVAL_S = 15.0
 
 
