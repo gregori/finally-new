@@ -1,0 +1,14 @@
+node_modules
+**/__pycache__
+**/*.pyc
+.git
+db/finally.db
+.env
+.env.local
+.env.*.local
+!.env.example
+*.egg-info
+.venv
+frontend/.next
+frontend/node_modules
+**/.DS_Store

@@ -1,0 +1,33 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    volumes:
+      - test-db:/app/db
+    environment:
+      - LLM_MOCK=true
+      - OPENCODE_API_KEY=mock-key-for-tests
+      - DATABASE_URL=/app/db/test.db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.50.0-jammy
+    depends_on:
+      app:
+        condition: service_healthy
+    working_dir: /tests
+    volumes:
+      - ./e2e:/tests
+      - ./playwright.config.ts:/tests/playwright.config.ts
+    network_mode: "service:app"
+    command: npx playwright test
+
+volumes:
+  test-db:
